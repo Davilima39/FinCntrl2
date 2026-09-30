@@ -1992,7 +1992,7 @@ function render(){
     MonthNav.center();
   }catch(err){
     console.error('Erro ao renderizar rota:',r,err);
-    if(view)view.innerHTML=`<div class="card alert"><b>NÃ£o foi possÃ­vel carregar esta seÃ§Ã£o.</b><p style="color:var(--muted);font-size:13px;margin-top:7px">A seÃ§Ã£o anterior nÃ£o serÃ¡ mantida na tela. Tente novamente ou recarregue o aplicativo.</p></div>`;
+    if(view)view.innerHTML=`<div class="card alert" style="margin:16px 0;padding:20px"><b style="font-size:17px">Erro no Painel</b><p style="color:var(--muted);font-size:13px;margin-top:10px">O login e a sincronizaÃ§Ã£o foram concluÃ­dos, mas o Painel encontrou um erro ao ser montado.</p><div style="margin-top:14px;padding:13px;border:1px solid var(--warn);border-radius:10px;background:rgba(245,158,11,.08)"><b style="font-size:12px;color:var(--warn)">ERRO TÃ‰CNICO</b><br><code style="display:block;color:#fff;word-break:break-word;white-space:pre-wrap;margin-top:7px">${esc(err?.stack||err?.message||String(err))}</code></div><p style="color:var(--muted2);font-size:12px;margin-top:12px">Envie um print desta mensagem. NÃ£o altere as regras do Firebase.</p></div>`;
   }
 }
 
@@ -3128,7 +3128,7 @@ window.render=function(){
     MonthNav.center();
   }catch(err){
     console.error('Erro ao renderizar rota:',state.route,err);
-    if(view)view.innerHTML=`<div class="card alert"><b>NÃ£o foi possÃ­vel carregar esta seÃ§Ã£o.</b><p style="color:var(--muted);font-size:13px;margin-top:7px">A seÃ§Ã£o anterior nÃ£o serÃ¡ mantida na tela. Tente novamente ou recarregue o aplicativo.</p></div>`;
+    if(view)view.innerHTML=`<div class="card alert" style="margin:16px 0;padding:20px"><b style="font-size:17px">Erro no Painel</b><p style="color:var(--muted);font-size:13px;margin-top:10px">O login e a sincronizaÃ§Ã£o foram concluÃ­dos, mas o Painel encontrou um erro ao ser montado.</p><div style="margin-top:14px;padding:13px;border:1px solid var(--warn);border-radius:10px;background:rgba(245,158,11,.08)"><b style="font-size:12px;color:var(--warn)">ERRO TÃ‰CNICO</b><br><code style="display:block;color:#fff;word-break:break-word;white-space:pre-wrap;margin-top:7px">${esc(err?.stack||err?.message||String(err))}</code></div><p style="color:var(--muted2);font-size:12px;margin-top:12px">Envie um print desta mensagem. NÃ£o altere as regras do Firebase.</p></div>`;
   }
 };
 ACT['bg-new']=()=>F.budget();ACT['bg-ed']=e=>F.budget(e.dataset.id);ACT['fx-per']=e=>{state.tab.fluxo=+e.dataset.d;render();};

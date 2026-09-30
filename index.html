@@ -343,13 +343,12 @@ tbody tr:hover{background:rgba(109,40,217,.055)}
 const firebaseConfig={apiKey:"AIzaSyBUj2CKyD3kv_0BBOnaAnjjR20wht_00YU",authDomain:"fincntrl-735dd.firebaseapp.com",projectId:"fincntrl-735dd",storageBucket:"fincntrl-735dd.firebasestorage.app",messagingSenderId:"786919214670",appId:"1:786919214670:web:048f2deeaf5eedecd67d1f",measurementId:"G-7RBM3MHQYQ"};
 firebase.initializeApp(firebaseConfig);
 const cloudAuth=firebase.auth(), cloudDb=firebase.firestore(), cloudClientId=(crypto.randomUUID?crypto.randomUUID():Math.random().toString(36).slice(2));
-let cloudReady=false,cloudApplying=false,cloudUnsubscribe=null,cloudTimer=null,cloudCreate=false,appBooted=false;
-function cloudRenderWhenReady(){if(!appBooted)return;render();Recur.autoRun();}
+let cloudReady=false,cloudApplying=false,cloudUnsubscribe=null,cloudTimer=null,cloudCreate=false,appBooted=false,pendingCloudRender=false;
 function cloudShowError(message){const el=document.getElementById('cloudError');if(el)el.textContent=message||'';}
 function cloudSetReady(ready){document.body.classList.toggle('cloud-ready',ready);}
 document.getElementById('cloudMode').onclick=()=>{cloudCreate=!cloudCreate;document.getElementById('cloudSubmit').textContent=cloudCreate?'Criar conta':'Entrar';document.getElementById('cloudMode').textContent=cloudCreate?'JÃ¡ tenho uma conta':'Criar uma conta';document.getElementById('cloudLead').textContent=cloudCreate?'Crie sua conta para guardar os dados na nuvem.':'Entre para sincronizar seus dados entre dispositivos.';document.getElementById('cloudPass').autocomplete=cloudCreate?'new-password':'current-password';cloudShowError('');};
 document.getElementById('cloudForm').onsubmit=async e=>{e.preventDefault();cloudShowError('');const email=document.getElementById('cloudEmail').value.trim(),password=document.getElementById('cloudPass').value;try{document.getElementById('cloudSubmit').disabled=true;if(cloudCreate)await cloudAuth.createUserWithEmailAndPassword(email,password);else await cloudAuth.signInWithEmailAndPassword(email,password);}catch(err){const msgs={'auth/email-already-in-use':'Este e-mail jÃ¡ tem uma conta. Entre nela.','auth/invalid-email':'Digite um e-mail vÃ¡lido.','auth/weak-password':'A senha precisa ter pelo menos 6 caracteres.','auth/user-not-found':'Conta nÃ£o encontrada. Crie uma conta ou confira o e-mail.','auth/wrong-password':'Senha incorreta.','auth/invalid-credential':'E-mail ou senha incorretos.','auth/network-request-failed':'Falha de conexÃ£o. Verifique a internet e tente novamente.'};cloudShowError(msgs[err.code]||'NÃ£o foi possÃ­vel entrar. Verifique se o Firebase Authentication estÃ¡ ativado.');}finally{document.getElementById('cloudSubmit').disabled=false;}};
-cloudAuth.onAuthStateChanged(async user=>{cloudReady=false;cloudSetReady(false);if(cloudUnsubscribe){cloudUnsubscribe();cloudUnsubscribe=null;}if(!user){return;}try{const ref=cloudDb.collection('users').doc(user.uid),snap=await ref.get();if(snap.exists&&snap.data().data){cloudApplying=true;const safeCloud=DB.normalizeData(snap.data().data);if(safeCloud)DB.replaceAll(safeCloud);else throw new Error('Dados de nuvem invÃ¡lidos');cloudApplying=false;}else{await ref.set({data:DB.raw(),clientId:cloudClientId,updatedAt:firebase.firestore.FieldValue.serverTimestamp()});}cloudReady=true;cloudSetReady(true);cloudRenderWhenReady();let accountBtn=document.getElementById('cloudAccount');if(!accountBtn){accountBtn=document.createElement('button');accountBtn.id='cloudAccount';accountBtn.className='btn btn-s';accountBtn.style.marginLeft='auto';document.querySelector('.top').appendChild(accountBtn);}accountBtn.textContent='â˜ '+(user.email||'Conta')+' Â· Sair';accountBtn.onclick=()=>{clearTimeout(cloudTimer);cloudTimer=null;cloudAuth.signOut();};cloudUnsubscribe=ref.onSnapshot(s=>{if(!s.exists||!s.data().data||s.data().clientId===cloudClientId)return;clearTimeout(cloudTimer);cloudApplying=true;const safeCloud=DB.normalizeData(s.data().data);if(!safeCloud){cloudApplying=false;cloudShowError('Os dados recebidos da nuvem sÃ£o invÃ¡lidos e foram ignorados.');return;}DB.replaceAll(safeCloud);cloudApplying=false;cloudRenderWhenReady();},err=>cloudShowError('Erro ao receber atualizaÃ§Ãµes: '+err.message));}catch(err){cloudApplying=false;cloudShowError('NÃ£o foi possÃ­vel carregar a nuvem. Confira as regras do Firestore e tente sair e entrar novamente.');console.error(err);}});
+cloudAuth.onAuthStateChanged(async user=>{cloudReady=false;cloudSetReady(false);if(cloudUnsubscribe){cloudUnsubscribe();cloudUnsubscribe=null;}if(!user){return;}try{const ref=cloudDb.collection('users').doc(user.uid),snap=await ref.get();if(snap.exists&&snap.data().data){cloudApplying=true;DB.replaceAll(snap.data().data);cloudApplying=false;}else{await ref.set({data:DB.raw(),clientId:cloudClientId,updatedAt:firebase.firestore.FieldValue.serverTimestamp()});}cloudReady=true;cloudSetReady(true);if(appBooted){render();Recur.autoRun();}else{pendingCloudRender=true;}let accountBtn=document.getElementById('cloudAccount');if(!accountBtn){accountBtn=document.createElement('button');accountBtn.id='cloudAccount';accountBtn.className='btn btn-s';accountBtn.style.marginLeft='auto';document.querySelector('.top').appendChild(accountBtn);}accountBtn.textContent='â˜ '+(user.email||'Conta')+' Â· Sair';accountBtn.onclick=()=>cloudAuth.signOut();cloudUnsubscribe=ref.onSnapshot(s=>{if(!s.exists||!s.data().data||s.data().clientId===cloudClientId)return;clearTimeout(cloudTimer);cloudApplying=true;DB.replaceAll(s.data().data);cloudApplying=false;if(appBooted){render();}else{pendingCloudRender=true;}},err=>cloudShowError('Erro ao receber atualizaÃ§Ãµes: '+err.message));}catch(err){cloudApplying=false;cloudShowError('NÃ£o foi possÃ­vel carregar a nuvem. Confira as regras do Firestore e tente sair e entrar novamente.');console.error(err);}});
 
 /* ==================================================================
    FinCtrl v2.1 â€” com navegaÃ§Ã£o de meses aprimorada
@@ -397,54 +396,16 @@ const DB=(()=>{
   const SHAPE={people:[],accounts:[],cards:[],categories:[],transactions:[],
                purchases:[],vaults:[],vaultMovements:[],settlements:[],
                recurrences:[],meta:{}};
-  const TABLES=['people','accounts','cards','categories','transactions','purchases','vaults','vaultMovements','settlements','recurrences','budgets','personEvents'];
-  const MAX_RECORDS=20000, MAX_TEXT=5000;
-  function cloneSafe(v,depth=0){
-    if(depth>8)return null;
-    if(v===null||typeof v==='number'||typeof v==='boolean')return v;
-    if(typeof v==='string')return v.slice(0,MAX_TEXT);
-    if(Array.isArray(v))return v.slice(0,MAX_RECORDS).map(x=>cloneSafe(x,depth+1));
-    if(typeof v==='object'){const o={};for(const [k,val] of Object.entries(v)){if(k==='__proto__'||k==='prototype'||k==='constructor')continue;o[k.slice(0,100)]=cloneSafe(val,depth+1);}return o;}
-    return null;
-  }
-  function normalizeData(input){
-    if(!input||typeof input!=='object'||Array.isArray(input))return null;
-    const out={};
-    for(const t of TABLES)out[t]=Array.isArray(input[t])?cloneSafe(input[t],0):[];
-    out.meta=cloneSafe(input.meta&&typeof input.meta==='object'?input.meta:{},0)||{};
-    return out;
-  }
   let d=null;
   function boot(){
     if(d) return d;
-    try{ d=normalizeData(JSON.parse(localStorage.getItem(KEY))); }catch(e){ d=null; }
+    try{ d=JSON.parse(localStorage.getItem(KEY))||null; }catch(e){ d=null; }
     if(!d){ d=JSON.parse(JSON.stringify(SHAPE)); seed(); }
     for(const k in SHAPE) if(!(k in d)) d[k]=Array.isArray(SHAPE[k])?[]:{};
     return d;
   }
-  function persist(){
-    try{
-      const serialized=JSON.stringify(d);
-      localStorage.setItem(KEY,serialized);
-      if(cloudReady&&!cloudApplying){
-        clearTimeout(cloudTimer);
-        const snapshot=JSON.parse(serialized);
-        cloudTimer=setTimeout(()=>{
-          const user=cloudAuth.currentUser;
-          if(!user||!cloudReady||cloudApplying)return;
-          try{
-            const payload=JSON.stringify(snapshot);
-            if(payload.length>900000){
-              cloudShowError('Os dados estÃ£o grandes demais para a sincronizaÃ§Ã£o atual. Exporte um backup antes de continuar.');
-              return;
-            }
-          }catch(e){ return; }
-          cloudDb.collection('users').doc(user.uid).set({data:snapshot,clientId:cloudClientId,updatedAt:firebase.firestore.FieldValue.serverTimestamp()})
-            .catch(err=>{console.error(err);cloudShowError('Falha ao salvar na nuvem. Verifique sua conexÃ£o.');});
-        },350);
-      }
-    }catch(e){ alert('NÃ£o foi possÃ­vel salvar (armazenamento cheio ou dados invÃ¡lidos).'); }
-  }
+  function persist(){ try{ localStorage.setItem(KEY,JSON.stringify(d)); if(cloudReady&&!cloudApplying){clearTimeout(cloudTimer);const snapshot=JSON.parse(JSON.stringify(d));cloudTimer=setTimeout(()=>cloudDb.collection('users').doc(cloudAuth.currentUser.uid).set({data:snapshot,clientId:cloudClientId,updatedAt:firebase.firestore.FieldValue.serverTimestamp()}).catch(err=>{console.error(err);cloudShowError('Falha ao salvar na nuvem. Verifique sua conexÃ£o.');}),350);} }
+    catch(e){ alert('NÃ£o foi possÃ­vel salvar (armazenamento cheio).'); } }
   function seed(){
     d.meta={created:Date.now(),version:2};
     d.categories=[
@@ -469,9 +430,8 @@ const DB=(()=>{
       if(i<0) return null; d[t][i]={...d[t][i],...patch}; persist(); return d[t][i]; },
     remove(t,id){ boot(); d[t]=d[t].filter(x=>x.id!==id); persist(); },
     raw:()=>boot(),
-    replaceAll(obj){ const safe=normalizeData(obj); if(!safe)throw new Error('Estrutura de dados invÃ¡lida'); d=safe; persist(); },
+    replaceAll(obj){ d=obj; persist(); },
     exportJSON:()=>JSON.stringify(boot(),null,2),
-    normalizeData:input=>normalizeData(input),
     wipe(){ localStorage.removeItem(KEY); d=null; boot(); },
     demo(){
       boot();
@@ -1804,10 +1764,6 @@ const F={
 /* ==================================================================
    EXPORT / AÃ‡Ã•ES / ROUTER
    ================================================================== */
-function sheetSafe(v){
-  const s=String(v??'');
-  return /^[=+@-]/.test(s)?"'"+s:s;
-}
 function exportCSV(){
   const m=state.month;
   const rows=[['Tipo','Data','Vencimento','Descricao','Pessoa','Categoria','Cartao/Conta','Parcela','Valor','Status']];
@@ -1822,45 +1778,13 @@ function exportCSV(){
     rows.push([t.tipo,t.data,t.data,t.descricao||'',pe?pe.nome:'',c?c.nome:'',a?a.nome:'','',
       String(t.valor).replace('.',','),'']);
   });
-  const csv='\uFEFF'+rows.map(r=>r.map(x=>`"${sheetSafe(x).replace(/"/g,'""')}"`).join(';')).join('\n');
+  const csv='\uFEFF'+rows.map(r=>r.map(x=>`"${String(x).replace(/"/g,'""')}"`).join(';')).join('\n');
   dl(new Blob([csv],{type:'text/csv;charset=utf-8'}),`finctrl-${m}.csv`);
 }
 function dl(blob,name){
   const u=URL.createObjectURL(blob),a=document.createElement('a');
   a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),1500);
 }
-
-function reportRows(m){
- const rows=[['RELATÃ“RIO FINANCEIRO',ymLbL(m)],[],['RESUMO','VALOR'],
-  ['Receitas',Fin.dre(m).receita],['Gastos',Fin.dre(m).gasto],['Resultado',Fin.dre(m).resultado],
-  ['Reservado',Fin.dre(m).reservaLiq],['Taxa de poupanÃ§a',Fin.dre(m).receita?Fin.dre(m).taxaPoupanca/100:0],[],
-  ['EVOLUÃ‡ÃƒO 12 MESES','Receita','Gasto','Resultado','Reservado','PoupanÃ§a']];
- Array.from({length:12},(_,i)=>ymAdd(m,-11+i)).forEach(comp=>{
-  const x=Fin.dre(comp); rows.push([ymLb(comp),x.receita,x.gasto,x.resultado,x.reservaLiq,x.receita?x.taxaPoupanca/100:0]);
- });
- rows.push([],['GASTOS POR CATEGORIA','VALOR','PERCENTUAL']);
- const cats=Model.byCategory(m),total=Fin.dre(m).gasto||0;
- cats.forEach(c=>rows.push([c.label,c.value,total?c.value/total:0]));
- rows.push([],['LANÃ‡AMENTOS DO MÃŠS','Data','Tipo','DescriÃ§Ã£o','Categoria','Conta','CartÃ£o','Pessoa','Valor','Status']);
- Model.parcelsIn(m).forEach(i=>{
-  const p=DB.get('purchases',i.purchaseId),pe=DB.get('people',i.personId),c=DB.get('categories',i.categoryId),cd=DB.get('cards',i.cardId);
-  rows.push(['Parcela',i.venc,'CartÃ£o',p?p.descricao||'':'',c?c.nome:'', '',cd?cd.nome:'',pe?pe.nome:'',i.valor,i.paga?'Paga':'Aberta']);
- });
- DB.all('transactions').filter(t=>(t.data||'').slice(0,7)===m).forEach(t=>{
-  const pe=DB.get('people',t.personId),c=DB.get('categories',t.categoryId),ac=DB.get('accounts',t.accountId);
-  rows.push(['LanÃ§amento',t.data,t.tipo,t.descricao||'',c?c.nome:'',ac?ac.nome:'','',pe?pe.nome:'',t.valor,'']);
- });
- return rows;
-}
-function exportExcelReport(){
- const m=state.month,rows=reportRows(m);
- const escX=v=>sheetSafe(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
- const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:Arial}table{border-collapse:collapse}td,th{border:1px solid #bbb;padding:6px}th{background:#eee;font-weight:bold}.money{mso-number-format:"#,##0.00"}.pct{mso-number-format:"0.0%"}</style></head><body><table>${rows.map((r,ri)=>`<tr>${r.map((v,ci)=>{const cls=typeof v==='number'?(r[0]==='Taxa de poupanÃ§a'||(r[0]===ymLb(m)&&ci===5)||r[0]&&ci===2&&r[0]!=='Gastos'?'pct':'money'):'';return `<${ri===0?'th':'td'} class="${cls}">${escX(v)}</${ri===0?'th':'td'}>`;}).join('')}</tr>`).join('')}</table></body></html>`;
- dl(new Blob([html],{type:'application/vnd.ms-excel;charset=utf-8'}),`finctrl-relatorio-${m}.xls`);
- UI.toast('RelatÃ³rio Excel exportado âœ“');
-}
-ACT['rep-xls']=()=>{try{exportExcelReport();}catch(err){console.error(err);UI.toast('NÃ£o foi possÃ­vel exportar o Excel.');}};
-ACT['rep-print']=()=>{try{window.print();}catch(err){UI.toast('NÃ£o foi possÃ­vel abrir a impressÃ£o.');}};
 
 const ACT={
   'mo-':()=>{state.month=ymAdd(state.month,-1);render();},
@@ -1945,6 +1869,7 @@ const ACT={
   'wipe':()=>UI.confirm('Apagar todos os dados? NÃ£o hÃ¡ como desfazer. Exporte um backup antes.',
     ()=>{DB.wipe();state.month=curYM();render();UI.toast('Tudo apagado');},'Apagar tudo')
 };
+
 function go(r){
   if(!V[r]) r='dash';
   const changed=state.route!==r;
@@ -1993,7 +1918,7 @@ function render(){
     MonthNav.center();
   }catch(err){
     console.error('Erro ao renderizar rota:',r,err);
-    if(view)view.innerHTML=`<div class="card alert"><b>NÃ£o foi possÃ­vel carregar esta seÃ§Ã£o.</b><p style="color:var(--muted);font-size:13px;margin-top:7px">Erro tÃ©cnico: <code style="color:var(--warn);word-break:break-word">${esc(err?.message||String(err))}</code></p><p style="color:var(--muted2);font-size:12px;margin-top:8px">Recarregue o aplicativo. Se continuar, envie esta mensagem de erro para diagnÃ³stico.</p></div>`;
+    if(view)view.innerHTML=`<div class="card alert"><b>NÃ£o foi possÃ­vel carregar esta seÃ§Ã£o.</b><p style="color:var(--muted);font-size:13px;margin-top:7px">A seÃ§Ã£o anterior nÃ£o serÃ¡ mantida na tela. Tente novamente ou recarregue o aplicativo.</p></div>`;
   }
 }
 
@@ -2521,7 +2446,7 @@ function validarBackup(o){
 }
 ACT['imp']=()=>{
   const f=$('#impFile');if(!f)return;f.value='';f.click();
-  f.onchange=()=>{const file=f.files[0];if(!file)return;if(file.size>8*1024*1024){UI.toast('Backup muito grande (mÃ¡ximo 8 MB).');return;}const rd=new FileReader();rd.onload=()=>{let o;try{o=JSON.parse(rd.result);}catch(e){UI.toast('Arquivo nÃ£o Ã© um JSON vÃ¡lido');return;}
+  f.onchange=()=>{const file=f.files[0];if(!file)return;const rd=new FileReader();rd.onload=()=>{let o;try{o=JSON.parse(rd.result);}catch(e){UI.toast('Arquivo nÃ£o Ã© um JSON vÃ¡lido');return;}
     const v=validarBackup(o);
     UI.modal({title:'Conferir backup antes de importar',bodyHTML:`<div style="background:var(--elev);border-radius:11px;padding:12px"><b style="font-size:11px;color:var(--muted2)">CONTEÃšDO</b>${v.cont.length?v.cont.map(x=>`<div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0"><span style="color:var(--muted)">${x.t}</span><b>${x.n}</b></div>`).join(''):'<div style="color:var(--muted);margin-top:6px">vazio</div>'}<div style="display:flex;justify-content:space-between;font-size:12px;padding-top:7px;margin-top:7px;border-top:1px solid var(--line)"><span style="color:var(--muted2)">versÃ£o</span><b>${v.schema}</b></div></div>
       ${v.err.length?`<div class="card" style="margin-top:10px;background:rgba(220,38,38,.12);border-color:rgba(220,38,38,.4)"><b class="crit">âŒ ${v.err.length} erro(s) â€” importaÃ§Ã£o bloqueada</b><div style="font-size:12px;color:var(--muted);margin-top:6px;line-height:1.6">${v.err.slice(0,8).map(esc).join('<br>')}${v.err.length>8?`<br>â€¦ e mais ${v.err.length-8}`:''}</div></div>`:''}
@@ -2968,75 +2893,92 @@ V.rep=function(){
  const ppl=Model.peopleStats?Model.peopleStats(m):[];
  const cards=DB.all('cards').filter(c=>!c.archived)
   .map(c=>({label:c.nome,value:Model.invoice(c.id,m).total,color:c.cor||'#6D28D9'}));
- const fluxo=serie.map(x=>({label:ymLb(x.comp).split('/')[0],value:x.gasto}));
- const receitaSerie=serie.map(x=>({label:ymLb(x.comp).split('/')[0],value:x.receita}));
- const resultadoSerie=serie.map(x=>({label:ymLb(x.comp).split('/')[0],value:Math.max(0,x.resultado),color:'#10B981'}));
- const catChart=cats.slice(0,8).map(c=>({label:c.label,value:c.value,color:c.color||'#6D28D9'}));
- const peopleChart=ppl.filter(p=>p.mes>0).map(p=>({label:p.nome,value:p.mes,color:p.cor||'#6D28D9'}));
- const catTotal=d.gasto||0;
+
  return `
- <div class="card" style="margin-bottom:14px;border-color:rgba(109,40,217,.38);background:linear-gradient(135deg,rgba(109,40,217,.12),transparent)">
-  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-   <div style="flex:1;min-width:220px"><b style="font-size:16px">RelatÃ³rio financeiro Â· ${ymLbL(m)}</b>
-    <div style="font-size:12.5px;color:var(--muted);margin-top:4px">GrÃ¡ficos, comparativos e dados prontos para anÃ¡lise no Excel.</div></div>
-   <div style="display:flex;gap:7px;flex-wrap:wrap">
-    <button class="btn btn-p" data-act="rep-xls">â–£ Exportar Excel</button>
-    <button class="btn btn-s" data-act="csv">â†“ Exportar CSV</button>
-    <button class="btn btn-s" data-act="rep-print">âŽ™ Imprimir relatÃ³rio</button>
-   </div>
-  </div>
- </div>
+ ${!a.limpo?`<div class="card alert" style="margin-bottom:13px;display:flex;gap:11px;
+   align-items:center;flex-wrap:wrap">
+  <b style="flex:1;min-width:180px;font-size:13.5px">
+   âš ï¸ ${a.avisos.length} ponto(s) de atenÃ§Ã£o nos dados deste mÃªs</b>
+  <button class="btn btn-s" data-act="audit">Ver auditoria</button></div>`:''}
 
  <div class="grid g4" style="margin-bottom:6px">
   <div class="card kpi" style="--bar:#10B981"><div class="lb">Receitas</div>
    <div class="vl pos">${money(d.receita)}</div><div class="ft">no mÃªs</div></div>
   <div class="card kpi" style="--bar:#F87171"><div class="lb">Gasto real</div>
-   <div class="vl neg">${money(d.gasto)}</div><div class="ft">mÃ©dia 12m ${money(media)}</div></div>
-  <div class="card kpi" style="--bar:${d.resultado>=0?'#10B981':'#DC2626'}"><div class="lb">Resultado</div>
+   <div class="vl neg">${money(d.gasto)}</div>
+   <div class="ft">mÃ©dia 12m ${money(media)}</div></div>
+  <div class="card kpi" style="--bar:${d.resultado>=0?'#10B981':'#DC2626'}">
+   <div class="lb">Resultado</div>
    <div class="vl ${d.resultado>=0?'pos':'crit'}">${money(d.resultado)}</div>
    <div class="ft">${d.receita>0?`${d.taxaSobra.toFixed(0)}% da receita`:'sem receita'}</div></div>
   <div class="card kpi" style="--bar:#6D28D9"><div class="lb">Taxa de poupanÃ§a</div>
    <div class="vl ${d.reservaLiq>0?'pos':''}">${d.receita>0?d.taxaPoupanca.toFixed(0)+'%':'â€”'}</div>
-   <div class="ft">${money(d.reservaLiq)} reservado Â· mÃ©dia ${money(mediaRes)}</div></div>
- </div>
+   <div class="ft">${money(d.reservaLiq)} reservado Â· mÃ©dia ${money(mediaRes)}</div></div></div>
 
- <div class="sec"><h2>DistribuiÃ§Ã£o dos gastos por categoria</h2></div>
- <div class="grid g21">
-  <div class="card"><div class="donut-wrap">${Chart.donut(catChart,190,26)}${catChart.length?Chart.legend(catChart,8):''}</div></div>
-  <div class="card pad0"><div class="tw"><table>
-   <thead><tr><th>Categoria</th><th class="num">Valor</th><th class="num">%</th><th class="num">vs mÃªs ant.</th></tr></thead>
-   <tbody>${cats.length?cats.map(c=>{
-    const pv=(prev.find(x=>x.id===c.id)||{value:0}).value;
-    const dif=pv?((c.value-pv)/pv*100):null;
-    return `<tr><td><span class="tag"><span class="dot" style="background:${c.color}"></span>${esc(c.label)}</span></td>
-     <td class="num"><b>${money(c.value)}</b></td>
-     <td class="num" style="color:var(--muted)">${catTotal?(c.value/catTotal*100).toFixed(1):'0'}%</td>
-     <td class="num ${dif===null?'':dif>0?'neg':'pos'}">${dif===null?'<span style="color:var(--muted2)">novo</span>':(dif>0?'â–²':'â–¼')+' '+Math.abs(dif).toFixed(0)+'%'}</td></tr>`;
-   }).join(''):'<tr><td colspan="4"><div class="empty">Sem gastos neste mÃªs</div></td></tr>'}</tbody>
-  </table></div></div>
- </div>
+ <div class="card" style="margin-top:12px">
+  <div style="font-size:11px;font-weight:800;color:var(--muted2);letter-spacing:.09em;margin-bottom:11px">
+   DEMONSTRATIVO DE ${ymLbL(m).toUpperCase()}</div>
+  ${[['Receitas',d.receita,'pos','+'],
+     ['Despesas em conta',d.despConta,'neg','âˆ’'],
+     ['Despesas no cartÃ£o',d.despCartao,'neg','âˆ’']]
+   .map(([k,v,c,s])=>`<div style="display:flex;justify-content:space-between;gap:12px;padding:7px 0;
+    border-bottom:1px solid var(--line)"><span style="color:var(--muted);font-size:13px">${k}</span>
+    <b class="${c}" style="font-variant-numeric:tabular-nums">${s} ${money(v)}</b></div>`).join('')}
+  <div style="display:flex;justify-content:space-between;gap:12px;padding:11px 0 7px;
+   border-bottom:2px solid var(--line)">
+   <b style="font-size:14px">Resultado do mÃªs</b>
+   <b class="${d.resultado>=0?'pos':'crit'}" style="font-size:17px;font-variant-numeric:tabular-nums">
+    ${money(d.resultado)}</b></div>
+  <div style="margin-top:12px">
+   <div style="font-size:10.5px;font-weight:800;color:var(--muted2);letter-spacing:.09em;margin-bottom:6px">
+    DESTINO DO RESULTADO</div>
+   ${[['Reservado em cofrinhos',d.reservaLiq,d.reservaLiq>0?'pos':''],
+      ['Sobra parada em conta',d.sobraNaoReservada,'']]
+    .map(([k,v,c])=>`<div style="display:flex;justify-content:space-between;gap:12px;padding:5px 0">
+     <span style="color:var(--muted);font-size:12.5px">${k}</span>
+     <b class="${c}" style="font-size:13px;font-variant-numeric:tabular-nums">${money(v)}</b></div>`).join('')}</div>
+  <div style="margin-top:12px;padding-top:11px;border-top:1px solid var(--line)">
+   <div style="font-size:10.5px;font-weight:800;color:var(--muted2);letter-spacing:.09em;margin-bottom:6px">
+    MOVIMENTOS QUE NÃƒO SÃƒO GASTO</div>
+   ${[['Pagamento de fatura',d.fatPago],['TransferÃªncias',d.transf],
+      ['Reembolsos recebidos',d.reembolso],['Aportes em cofrinhos',d.aportes],
+      ['Resgates de cofrinhos',d.resgates]].filter(x=>x[1]>0)
+    .map(([k,v])=>`<div style="display:flex;justify-content:space-between;gap:12px;padding:4px 0">
+     <span style="color:var(--muted2);font-size:12px">${k}</span>
+     <span style="font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums">${money(v)}</span></div>`).join('')
+    ||'<div style="font-size:12px;color:var(--muted2)">Nenhum neste mÃªs</div>'}
+   <div style="font-size:11.5px;color:var(--muted2);margin-top:8px;line-height:1.5">
+    Estes valores movem dinheiro entre contas, cartÃµes e cofrinhos â€” nÃ£o sÃ£o despesas novas.</div></div>
+  <div style="margin-top:12px;text-align:right">
+   <button class="btn btn-s" data-act="audit">ðŸ” Auditar cÃ¡lculos</button></div></div>
 
- <div class="sec"><h2>EvoluÃ§Ã£o financeira Â· 12 meses</h2></div>
- <div class="grid g2">
-  <div class="card"><div style="font-size:12.5px;color:var(--muted);font-weight:700;margin-bottom:10px">GASTOS</div>${Chart.line(fluxo)}</div>
-  <div class="card"><div style="font-size:12.5px;color:var(--muted);font-weight:700;margin-bottom:10px">RECEITAS</div>${Chart.line(receitaSerie)}</div>
-  <div class="card"><div style="font-size:12.5px;color:var(--muted);font-weight:700;margin-bottom:10px">RESULTADO POSITIVO</div>${Chart.bars(resultadoSerie)}</div>
-  <div class="card"><div style="font-size:12.5px;color:var(--muted);font-weight:700;margin-bottom:10px">GASTOS Ã— RECEITAS</div>
-   <div style="display:grid;gap:8px">${serie.map(x=>{const mx=Math.max(x.receita,x.gasto,1);return `<div><div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted2);margin-bottom:3px"><span>${ymLb(x.comp)}</span><span>${money(x.receita)} / ${money(x.gasto)}</span></div><div style="display:flex;height:8px;border-radius:8px;overflow:hidden;background:var(--elev)"><div style="width:${(x.receita/mx*100).toFixed(1)}%;background:#10B981"></div><div style="width:${(x.gasto/mx*100).toFixed(1)}%;background:#F87171"></div></div></div>`;}).join('')}</div>
-  </div>
- </div>
-
- <div class="sec"><h2>Comparativos de ${ymLb(m)}</h2></div>
- <div class="grid g2">
-  <div class="card"><div style="font-size:12px;color:var(--muted);font-weight:700;margin-bottom:10px">POR PESSOA</div>
-   ${peopleChart.length?Chart.bars(peopleChart):'<div class="empty">Sem gastos atribuÃ­dos a pessoas</div>'}</div>
-  <div class="card"><div style="font-size:12px;color:var(--muted);font-weight:700;margin-bottom:10px">POR CARTÃƒO</div>
-   ${cards.filter(c=>c.value>0).length?Chart.bars(cards.filter(c=>c.value>0)):'<div class="empty">Sem faturas</div>'}</div>
- </div>
-
- <div class="sec"><h2>EvoluÃ§Ã£o detalhada</h2></div>
+ <div class="sec"><h2>Gasto por categoria</h2>
+  <button class="btn btn-s" data-act="csv">â†“ Exportar CSV</button></div>
  <div class="card pad0"><div class="tw"><table>
-  <thead><tr><th>MÃªs</th><th class="num">Receita</th><th class="num">Gasto</th><th class="num">Resultado</th><th class="num">Reservado</th><th class="num">PoupanÃ§a</th></tr></thead>
+  <thead><tr><th>Categoria</th><th class="num">Valor</th><th class="num">%</th>
+   <th class="num">vs mÃªs ant.</th><th class="num">OrÃ§amento</th></tr></thead>
+  <tbody>${cats.length?cats.map(c=>{
+   const pv=(prev.find(x=>x.id===c.id)||{value:0}).value;
+   const dif=pv?((c.value-pv)/pv*100):null;
+   const b=Budget.status(c.id,m);
+   return `<tr><td><span class="tag"><span class="dot" style="background:${c.color}"></span>${esc(c.label)}</span></td>
+    <td class="num"><b>${money(c.value)}</b></td>
+    <td class="num" style="color:var(--muted)">${d.gasto?(c.value/d.gasto*100).toFixed(1):'0'}%</td>
+    <td class="num ${dif===null?'':dif>0?'neg':'pos'}">${dif===null?'<span style="color:var(--muted2)">novo</span>'
+     :(dif>0?'â–²':'â–¼')+' '+Math.abs(dif).toFixed(0)+'%'}</td>
+    <td class="num">${b.limite?`<span class="tag" style="color:${b.nivel==='estourado'?'#DC2626'
+     :b.nivel==='critico'?'#F59E0B':'#10B981'}">${b.pct.toFixed(0)}% de ${money(b.limite)}</span>`
+     :'<span style="color:var(--muted2);font-size:11.5px">sem limite</span>'}</td></tr>`;}).join('')
+   :'<tr><td colspan="5"><div class="empty">Sem gastos neste mÃªs</div></td></tr>'}</tbody>
+  ${cats.length?`<tfoot><tr style="background:var(--elev)">
+   <td><b>Total</b></td><td class="num"><b>${money(d.gasto)}</b></td>
+   <td class="num">100%</td><td colspan="2"></td></tr></tfoot>`:''}
+ </table></div></div>
+
+ <div class="sec"><h2>EvoluÃ§Ã£o Â· 12 meses</h2></div>
+ <div class="card pad0"><div class="tw"><table>
+  <thead><tr><th>MÃªs</th><th class="num">Receita</th><th class="num">Gasto</th>
+   <th class="num">Resultado</th><th class="num">Reservado</th><th class="num">PoupanÃ§a</th></tr></thead>
   <tbody>${serie.slice().reverse().map(x=>`<tr${x.comp===m?' style="background:rgba(109,40,217,.1)"':''}>
    <td style="text-transform:capitalize">${ymLb(x.comp)}${x.comp===m?' <span class="tag" style="font-size:10px">atual</span>':''}</td>
    <td class="num pos">${x.receita?money(x.receita):'â€”'}</td>
@@ -3044,16 +2986,30 @@ V.rep=function(){
    <td class="num ${x.resultado>=0?'pos':'crit'}"><b>${x.receita||x.gasto?money(x.resultado):'â€”'}</b></td>
    <td class="num ${x.reservaLiq>0?'pos':''}">${x.reservaLiq?money(x.reservaLiq):'â€”'}</td>
    <td class="num" style="color:var(--muted)">${x.receita>0?x.taxaPoupanca.toFixed(0)+'%':'â€”'}</td>
-  </tr>`).join('')}</tbody>
- </table></div></div>
+  </tr>`).join('')}</tbody></table></div></div>
 
- <div class="card" style="margin-top:14px;background:var(--elev)">
-  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-   <div style="flex:1"><b>ExportaÃ§Ã£o completa</b><div style="font-size:12px;color:var(--muted);margin-top:3px">O Excel inclui lanÃ§amentos, parcelas, categorias e resumo dos Ãºltimos 12 meses.</div></div>
-   <button class="btn btn-p" data-act="rep-xls">Exportar .xls</button>
-  </div>
- </div>`;
-};
+ <div class="sec"><h2>Comparativos de ${ymLb(m)}</h2></div>
+ <div class="grid g2">
+  <div class="card"><div style="font-size:12px;color:var(--muted);font-weight:700;margin-bottom:10px">
+   POR PESSOA</div>
+   ${(()=>{const l=ppl.filter(p=>p.mes>0);if(!l.length)return '<div class="empty">Sem dados</div>';
+    const mx=Math.max(...l.map(p=>p.mes));
+    return l.map(p=>`<div style="display:flex;align-items:center;gap:10px;padding:6px 0">
+     <span class="dot" style="background:${p.cor||'#6D28D9'}"></span>
+     <span style="flex:1;font-size:13px">${esc(p.nome)}</span>
+     <div class="bar-t" style="width:80px;flex:0 0 80px">
+      <div class="bar-f" style="width:${p.mes/mx*100}%;background:${p.cor||'#6D28D9'}"></div></div>
+     <b class="num" style="font-size:12.5px">${money(p.mes)}</b></div>`).join('');})()}</div>
+  <div class="card"><div style="font-size:12px;color:var(--muted);font-weight:700;margin-bottom:10px">
+   POR CARTÃƒO</div>
+   ${(()=>{const l=cards.filter(c=>c.value>0);if(!l.length)return '<div class="empty">Sem faturas</div>';
+    const mx=Math.max(...l.map(c=>c.value));
+    return l.map(c=>`<div style="display:flex;align-items:center;gap:10px;padding:6px 0">
+     <span class="dot" style="background:${c.color}"></span>
+     <span style="flex:1;font-size:13px">${esc(c.label)}</span>
+     <div class="bar-t" style="width:80px;flex:0 0 80px">
+      <div class="bar-f" style="width:${c.value/mx*100}%;background:${c.color}"></div></div>
+     <b class="num" style="font-size:12.5px">${money(c.value)}</b></div>`).join('');})()}</div></div>`;};
 
 /* ---------- insights consolidados ---------- */
 Smart.safe=function(comp){const s=Fin.snapshot(comp);return {saldo:s.contas,faturas:s.faturas,fixas:s.fixas,livre:s.disponivel};};
@@ -3129,16 +3085,17 @@ window.render=function(){
     MonthNav.center();
   }catch(err){
     console.error('Erro ao renderizar rota:',state.route,err);
-    if(view)view.innerHTML=`<div class="card alert"><b>NÃ£o foi possÃ­vel carregar esta seÃ§Ã£o.</b><p style="color:var(--muted);font-size:13px;margin-top:7px">Erro tÃ©cnico: <code style="color:var(--warn);word-break:break-word">${esc(err?.message||String(err))}</code></p><p style="color:var(--muted2);font-size:12px;margin-top:8px">Recarregue o aplicativo. Se continuar, envie esta mensagem de erro para diagnÃ³stico.</p></div>`;
+    if(view)view.innerHTML=`<div class="card alert"><b>NÃ£o foi possÃ­vel carregar esta seÃ§Ã£o.</b><p style="color:var(--muted);font-size:13px;margin-top:7px">A seÃ§Ã£o anterior nÃ£o serÃ¡ mantida na tela. Tente novamente ou recarregue o aplicativo.</p></div>`;
   }
 };
 ACT['bg-new']=()=>F.budget();ACT['bg-ed']=e=>F.budget(e.dataset.id);ACT['fx-per']=e=>{state.tab.fluxo=+e.dataset.d;render();};
 
 /* ---------- inicializaÃ§Ã£o ---------- */
 state.route=(V[location.hash.slice(1)]?location.hash.slice(1):'dash');
-Recur.autoRun();
 appBooted=true;
+Recur.autoRun();
 render();
+if(pendingCloudRender){pendingCloudRender=false;render();}
 if(!DB.all('cards').length&&!DB.all('accounts').length)setTimeout(()=>UI.modal({title:'Bem-vindo ao FinCtrl ðŸ‘‹',bodyHTML:`<p style="color:var(--muted);line-height:1.7;font-size:14px">Controle completo em um sÃ³ lugar: contas, cartÃµes, <b>parcelamentos</b>, <b>pessoas</b>, contas fixas e cofrinhos.</p><p style="color:var(--muted2);line-height:1.7;font-size:13px;margin-top:11px">Quer comeÃ§ar com dados de exemplo ou do zero?</p>`,footHTML:`<button class="btn" data-x5>ComeÃ§ar do zero</button><button class="btn btn-p" id="wd">âœ¨ Carregar exemplo</button>`,onMount(){$('[data-x5]').onclick=()=>{UI.close();render();};$('#wd').onclick=()=>{DB.demo();Recur.autoRun();UI.close();render();UI.toast('Pronto! Explore o painel.');};}}),420);
 
 </script>
